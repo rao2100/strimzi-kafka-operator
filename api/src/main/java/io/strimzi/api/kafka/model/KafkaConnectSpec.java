@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import io.strimzi.api.kafka.model.authentication.KafkaClientAuthentication;
 import io.strimzi.api.kafka.model.connect.build.Build;
+import io.strimzi.api.kafka.model.storage.SingleVolumeStorage;
 import io.strimzi.crdgenerator.annotations.Description;
 import io.strimzi.crdgenerator.annotations.DescriptionFile;
 import io.sundr.builder.annotations.Buildable;
@@ -27,7 +28,7 @@ import java.util.Map;
     "tls", "authentication", "config", "resources", "livenessProbe",
     "readinessProbe", "jvmOptions", "jmxOptions", "affinity", "tolerations",
     "logging", "clientRackInitImage", "rack", "metrics", "tracing",
-    "template", "externalConfiguration" })
+    "template", "externalConfiguration", "storage" })
 @EqualsAndHashCode(callSuper = true, doNotUseGetters = true)
 public class KafkaConnectSpec extends AbstractKafkaConnectSpec {
 
@@ -41,6 +42,7 @@ public class KafkaConnectSpec extends AbstractKafkaConnectSpec {
     private ClientTls tls;
     private KafkaClientAuthentication authentication;
     private Build build;
+    private SingleVolumeStorage storage;
 
     @Description("The Kafka Connect configuration. Properties with the following prefixes cannot be set: " + FORBIDDEN_PREFIXES + " (with the exception of: " + FORBIDDEN_PREFIX_EXCEPTIONS + ").")
     public Map<String, Object> getConfig() {
@@ -90,5 +92,15 @@ public class KafkaConnectSpec extends AbstractKafkaConnectSpec {
 
     public void setBuild(Build build) {
         this.build = build;
+    }
+
+    @Description("Storage configuration (disk). Cannot be updated.")
+    @JsonProperty(required = true)
+    public SingleVolumeStorage getStorage() {
+        return storage;
+    }
+
+    public void setStorage(SingleVolumeStorage storage) {
+        this.storage = storage;
     }
 }

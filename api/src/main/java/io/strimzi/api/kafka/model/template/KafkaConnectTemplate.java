@@ -26,7 +26,7 @@ import java.util.Map;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonPropertyOrder({"deployment", "podSet", "pod", "apiService", "headlessService", "connectContainer", "initContainer",
     "podDisruptionBudget", "serviceAccount", "clusterRoleBinding", "buildPod", "buildContainer", "buildConfig",
-    "buildServiceAccount", "jmxSecret"})
+    "buildServiceAccount", "jmxSecret", "persistentVolumeClaim"})
 @EqualsAndHashCode
 public class KafkaConnectTemplate implements HasJmxSecretTemplate, Serializable, UnknownPropertyPreserving {
     private static final long serialVersionUID = 1L;
@@ -46,6 +46,7 @@ public class KafkaConnectTemplate implements HasJmxSecretTemplate, Serializable,
     private ResourceTemplate serviceAccount;
     private ResourceTemplate buildServiceAccount;
     private ResourceTemplate jmxSecret;
+    private ResourceTemplate persistentVolumeClaim;
     private Map<String, Object> additionalProperties = new HashMap<>(0);
 
     @Description("Template for Kafka Connect `Deployment`.")
@@ -198,6 +199,16 @@ public class KafkaConnectTemplate implements HasJmxSecretTemplate, Serializable,
     }
     public void setJmxSecret(ResourceTemplate jmxSecret) {
         this.jmxSecret = jmxSecret;
+    }
+
+    @Description("Template for the Kafka Connect Persistent volume claim.")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public ResourceTemplate getPersistentVolumeClaim() {
+        return persistentVolumeClaim;
+    }
+
+    public void setPersistentVolumeClaim(ResourceTemplate persistentVolumeClaim) {
+        this.persistentVolumeClaim = persistentVolumeClaim;
     }
 
     @Override
