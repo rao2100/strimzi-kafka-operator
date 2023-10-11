@@ -7,6 +7,7 @@ package io.strimzi.operator.cluster.operator.assembly;
 import io.fabric8.kubernetes.api.model.HasMetadata;
 import io.fabric8.kubernetes.api.model.LabelSelector;
 import io.fabric8.kubernetes.api.model.LabelSelectorRequirement;
+import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.apps.Deployment;
 import io.fabric8.kubernetes.api.model.rbac.ClusterRoleBinding;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -22,6 +23,7 @@ import io.strimzi.api.kafka.model.StrimziPodSet;
 import io.strimzi.api.kafka.model.authentication.KafkaClientAuthentication;
 import io.strimzi.api.kafka.model.status.KafkaConnectStatus;
 import io.strimzi.api.kafka.model.status.KafkaConnectorStatus;
+import io.strimzi.api.kafka.model.status.KafkaStatus;
 import io.strimzi.operator.cluster.PlatformFeaturesAvailability;
 import io.strimzi.operator.cluster.ClusterOperatorConfig;
 import io.strimzi.operator.common.model.InvalidResourceException;
@@ -38,15 +40,19 @@ import io.strimzi.operator.common.Util;
 import io.strimzi.operator.common.VertxUtil;
 import io.strimzi.operator.common.model.Labels;
 import io.strimzi.operator.common.model.NamespaceAndName;
+import io.strimzi.operator.common.model.StatusUtils;
 import io.strimzi.operator.common.operator.resource.DeploymentOperator;
 import io.strimzi.operator.common.operator.resource.PodOperator;
-import io.strimzi.operator.common.model.StatusUtils;
+import io.strimzi.operator.common.operator.resource.PvcOperator;
+import io.strimzi.operator.common.operator.resource.StorageClassOperator;
 import io.strimzi.operator.common.operator.resource.StrimziPodSetOperator;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.Promise;
 import io.vertx.core.Vertx;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -64,6 +70,7 @@ import java.util.stream.Collectors;
  *     <li>A Kafka Connect Deployment and related Services</li>
  * </ul>
  */
+@SuppressWarnings({"checkstyle:ClassFanOutComplexity"})
 public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<KubernetesClient, KafkaConnect, KafkaConnectList, Resource<KafkaConnect>, KafkaConnectSpec, KafkaConnectStatus> {
     private static final ReconciliationLogger LOGGER = ReconciliationLogger.create(KafkaConnectAssemblyOperator.class.getName());
     private final DeploymentOperator deploymentOperations;
@@ -73,6 +80,10 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
     private final KafkaVersion.Lookup versions;
     private final boolean stableIdentities;
     private final SharedEnvironmentProvider sharedEnvironmentProvider;
+    private final PvcOperator pvcOperations;
+    private final StorageClassOperator storageClassOperator;
+
+    protected static final Logger LOG = LogManager.getLogger(KafkaConnectAssemblyOperator.class.getName());
 
     /**
      * Constructor
@@ -130,6 +141,8 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
         this.versions = config.versions();
         this.stableIdentities = config.featureGates().stableConnectIdentitiesEnabled();
         this.sharedEnvironmentProvider = supplier.sharedEnvironmentProvider;
+        this.pvcOperations = supplier.pvcOperations;
+        this.storageClassOperator = supplier.storageClassOperations;
     }
 
     @Override
@@ -164,6 +177,11 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
 
         controllerResources(reconciliation, connect, deployment, podSet)
                 .compose(i -> connectServiceAccount(reconciliation, namespace, KafkaConnectResources.serviceAccountName(connect.getCluster()), connect))
+                .compose(i -> {
+                    List<PersistentVolumeClaim> pvcs = connect.generatePersistentVolumeClaims(connect.getStorage());
+                    return new PvcReconciler(reconciliation, pvcOperations, storageClassOperator)
+                            .resizeAndReconcilePvcs(new KafkaStatus(), podIndex -> KafkaConnectResources.deploymentName(reconciliation.name()), pvcs);
+                })
                 .compose(i -> connectInitClusterRoleBinding(reconciliation, initCrbName, initCrb))
                 .compose(i -> connectNetworkPolicy(reconciliation, namespace, connect, isUseResources(kafkaConnect)))
                 .compose(i -> connectBuildOperator.reconcile(reconciliation, namespace, activeController(deployment.get(), podSet.get()), build))
@@ -459,5 +477,13 @@ public class KafkaConnectAssemblyOperator extends AbstractConnectOperator<Kubern
             default ->
                     LOGGER.errorCr(new Reconciliation("connector-watch", connectorKind, connectName, namespace), "Unknown action: {} {} in namespace {}", connectorKind, connectorName, namespace);
         }
+    }
+
+    private int getPodIndexFromPvcName(String pvcName)  {
+        return Integer.parseInt(pvcName.substring(pvcName.lastIndexOf("-") + 1));
+    }
+
+    private int getPodIndexFromPodName(String podName)  {
+        return Integer.parseInt(podName.substring(podName.lastIndexOf("-") + 1));
     }
 }
